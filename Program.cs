@@ -1,5 +1,6 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Xml.Serialization;
 
 namespace PaymentSystemIntegrationSystem;
 
@@ -18,39 +19,58 @@ class Program
             switch (input)
             {
                 case "1":
+                    {
+                        IPaymentProcessor oldAdapter = new OldPaymentAdapter();
+
+                        decimal oldAmount = ReadAmount();
+                        if (oldAmount <= 0)
+                        {
+                            Console.WriteLine("Платёж отменён.\n");
+                            break;
+                        }
+
+                        string purpose = ReadPurpose();
+                        if (purpose == null)
+                        {
+                            Console.WriteLine("Платёж отменён.\n");
+                            break;
+                        }
+
+                        manager.ProcessPayment(oldAdapter, oldAmount, purpose);
+                    }
                     break;
                 case "2":
-                    // 1. Создаём адаптер новой системы
-                    IPaymentProcessor newAdapter = new NewPaymentAdapter();
-
-                    // 2. Запрашиваем сумму (используем ваш безопасный ReadAmount)
-                    decimal newAmount = ReadAmount();
-                    if (newAmount <= 0)
                     {
-                        Console.WriteLine("Платёж отменён.\n");
-                        break;
-                    }
+                        IPaymentProcessor newAdapter = new NewPaymentAdapter();
 
-                    // 3. Запрашиваем назначение платежа
-                    string purpose = ReadPurpose();
-                    if (purpose == null)
-                    {
-                        Console.WriteLine("Платёж отменён.\n");
-                        break;
-                    }
+                        decimal newAmount = ReadAmount();
+                        if (newAmount <= 0)
+                        {
+                            Console.WriteLine("Платёж отменён.\n");
+                            break;
+                        }
 
-                    // 4. Отдаём в менеджер — он вызовет Pay у адаптера
-                    manager.ProcessPayment(newAdapter, newAmount, purpose);
+                        string purpose = ReadPurpose();
+                        if (purpose == null)
+                        {
+                            Console.WriteLine("Платёж отменён.\n");
+                            break;
+                        }
+
+                        manager.ProcessPayment(newAdapter, newAmount, purpose);
+                    }
                     break;
                 case "3":
+                    manager.ShowAllPayments();
                     break;
                 case "4":
+                    manager.ClearAllPayments();
                     break;
                 case "5":
                     Console.WriteLine("Программа успешно завершена!");
                     return;
                 default:
-                    Console.WriteLine("Ошибка ввода. Команда не распознана.");
+                    Console.WriteLine("Ошибка ввода. Команда не распознана.\n");
                     break;
             }
         }
@@ -59,11 +79,9 @@ class Program
     {
         while (true)
         {
-            Console.Write("Введите назначение платежа (или '0' для отмены): ");
+            Console.Write("Введите назначение платежа: ");
             string input = Console.ReadLine()?.Trim() ?? "";
 
-            if (input == "0")
-                return null;
 
             if (string.IsNullOrWhiteSpace(input))
             {
@@ -84,13 +102,10 @@ class Program
     {
         while (true)
         {
-            Console.Write("Введите сумму платежа (или '0' для отмены): ");
+            Console.Write("Введите сумму платежа: ");
             string input = Console.ReadLine()?.Trim() ?? "";
 
-            if (input == "0")
-                return -1; // сигнал отмены
-
-            input = input.Replace('.', ','); // удобство для пользователя
+            input = input.Replace('.', ',');
 
             if (!decimal.TryParse(input, out decimal amount))
             {
@@ -131,28 +146,26 @@ class Print
     {
         Console.WriteLine(
             "Выберите действие\n" +
-            "1 - Оплатить через старую систему\n" + //создаёт OldPaymentAdapter, запрашивает сумму и выполняет платёж.
-            "2 - Оплатить через новую систему\n" + //создаёт NewPaymentAdapter, запрашивает сумму и выполняет платёж.
-            "3 - Показать все платежи\n" + //вызывает метод ShowAllPayments().
-            "4 - Очистить список платежей\n" + // вызывает метод ClearAllPayments().
+            "1 - Оплатить через старую систему\n" +
+            "2 - Оплатить через новую систему\n" +
+            "3 - Показать все платежи\n" +
+            "4 - Очистить список платежей\n" +
             "5 - Выход из программы\n"
         );
-    }
-
-    public static void Message(string info)
-    {
-        Console.WriteLine(info);
     }
 }
 public class PaymentDto
 {
     [JsonPropertyName("amount")]
+    [XmlElement("amount")]
     public decimal Amount { get; set; }
 
     [JsonPropertyName("purpose")]
+    [XmlElement("purpose")]
     public string? Purpose { get; set; }
 
     [JsonPropertyName("currency")]
+    [XmlElement("currency")]
     public string? Currency { get; set; }
 }
 
@@ -161,7 +174,6 @@ class PaymentManager
     List<string> payment = new();
     public void ProcessPayment(IPaymentProcessor processor, decimal amount, string purpose)
     {
-        // Тело вы доделаете сами — здесь просто вызов адаптера:
         processor.Pay(amount, purpose);
 
         string info = processor.GetPaymentInfo();
@@ -169,67 +181,32 @@ class PaymentManager
 
         Console.WriteLine($"Успешно! Всего платежей: {payment.Count}\n");
     }
-    void ShowAllPayments() { }// — выводит информацию обо всех выполненных платежах
-    void ClearAllPayments() { } //очищает список платежей
-
-}
-
-// Интрефейс
-interface IPaymentProcessor
-{
-    void Pay(decimal amount, string purpose); //выполнить платёж
-    string GetPaymentInfo(); //получить информацию о платеже
-}
-
-// Классы существующих платёжных систем
-class OldPaymentSystem
-{
-    void MakePaymentXml(string xmlData)
+    public void ShowAllPayments()
     {
-        Console.WriteLine($"[OldPaymentSystem] Обработка XML: {xmlData}");
+        if (payment.Count == 0)
+            Console.WriteLine("Список платежей пуст.");
+        else
+        {
+            Console.WriteLine("Список платежей:");
+            foreach (var item in payment)
+            {
+                Console.WriteLine(item);
+                Console.WriteLine("-------------------------------------------------------------");
+            }
+        }
+        Console.WriteLine();
     }
-}
-
-public class NewPaymentSystem
-{
-    public string? ProcessPaymentJson(string jsonData)
+    public void ClearAllPayments()
     {
-        Console.WriteLine($"[NewPaymentSystem] Получены JSON-данные: {jsonData}");
-
-        PaymentDto? payment;
-        try
-        {
-            payment = JsonSerializer.Deserialize<PaymentDto>(jsonData);
-        }
-        catch (JsonException ex)
-        {
-            Console.WriteLine($"[NewPaymentSystem] Ошибка синтаксиса JSON: {ex.Message}");
-            return null;
-        }
-
-        if (payment is null)
-        {
-            Console.WriteLine("[NewPaymentSystem] JSON пустой или null");
-            return null;
-        }
-
-        if (!ValidatePayment(payment, out string errorMessage))
-        {
-            Console.WriteLine($"[NewPaymentSystem] Ошибка валидации: {errorMessage}");
-            return null;
-        }
-
-        string transactionId = Guid.NewGuid().ToString("N");
-
-        Console.WriteLine("[NewPaymentSystem] Платёж успешно обработан:");
-        Console.WriteLine($"   - Сумма:         {payment.Amount} {payment.Currency}");
-        Console.WriteLine($"   - Назначение:    {payment.Purpose}");
-        Console.WriteLine($"   - ID транзакции: {transactionId}");
-
-        return transactionId;
+        payment.Clear();
+        Console.WriteLine("Список платежей успешно очищен.");
     }
 
-    private bool ValidatePayment(PaymentDto payment, out string error)
+}
+
+public class Validate
+{
+    static public bool Payment(PaymentDto payment, out string error)
     {
         if (payment.Amount <= 0)
         {
@@ -262,17 +239,126 @@ public class NewPaymentSystem
     }
 }
 
+// Интрефейс
+interface IPaymentProcessor
+{
+    void Pay(decimal amount, string purpose);
+    string GetPaymentInfo();
+}
+
+// Классы существующих платёжных систем
+class OldPaymentSystem
+{
+    XmlSerializer serializer = new XmlSerializer(typeof(PaymentDto));
+    public string? MakePaymentXml(string xmlData)
+    {
+        Console.WriteLine($"[OldPaymentSystem] Обработка XML: {xmlData}");
+
+        PaymentDto? payment;
+        try
+        {
+            payment = (PaymentDto?)serializer.Deserialize(new StringReader(xmlData));
+        }
+        catch (InvalidOperationException ex)
+        {
+            Console.WriteLine($"[OldPaymentSystem] Ошибка синтаксиса XML: {ex.Message}");
+            return null;
+        }
+        if (payment is null)
+        {
+            Console.WriteLine($"[OldPaymentSystem] XML пустой или null");
+            return null;
+        }
+        if (!Validate.Payment(payment, out string errorMessage))
+        {
+            Console.WriteLine($"[OldPaymentSystem] Ошибка валидации: {errorMessage}");
+            return null;
+        }
+
+        string transactionId = Guid.NewGuid().ToString("N");
+
+        Console.WriteLine("[OldPaymentSystem] Платёж успешно обработан:");
+        Console.WriteLine($"   - Сумма:         {payment.Amount} {payment.Currency}");
+        Console.WriteLine($"   - Назначение:    {payment.Purpose}");
+        Console.WriteLine($"   - ID транзакции: {transactionId}");
+
+        return transactionId;
+    }
+}
+
+public class NewPaymentSystem
+{
+    public string? ProcessPaymentJson(string jsonData)
+    {
+        Console.WriteLine($"[NewPaymentSystem] Получены JSON-данные: {jsonData}");
+
+        PaymentDto? payment;
+        try
+        {
+            payment = JsonSerializer.Deserialize<PaymentDto>(jsonData);
+        }
+        catch (JsonException ex)
+        {
+            Console.WriteLine($"[NewPaymentSystem] Ошибка синтаксиса JSON: {ex.Message}");
+            return null;
+        }
+
+        if (payment is null)
+        {
+            Console.WriteLine("[NewPaymentSystem] JSON пустой или null");
+            return null;
+        }
+
+        if (!Validate.Payment(payment, out string errorMessage))
+        {
+            Console.WriteLine($"[NewPaymentSystem] Ошибка валидации: {errorMessage}");
+            return null;
+        }
+
+        string transactionId = Guid.NewGuid().ToString("N");
+
+        Console.WriteLine("[NewPaymentSystem] Платёж успешно обработан:");
+        Console.WriteLine($"   - Сумма:         {payment.Amount} {payment.Currency}");
+        Console.WriteLine($"   - Назначение:    {payment.Purpose}");
+        Console.WriteLine($"   - ID транзакции: {transactionId}");
+
+        return transactionId;
+    }
+}
+
 // Классы-адаптеры
 class OldPaymentAdapter : IPaymentProcessor
 {
-    public string GetPaymentInfo()
-    {
-        throw new NotImplementedException();
-    }
+    private readonly OldPaymentSystem _oldSystem = new();
+    private decimal _amount;
+    private string _purpose = "";
+    private string? _transactionId;
 
     public void Pay(decimal amount, string purpose)
     {
-        throw new NotImplementedException();
+        _amount = amount;
+        _purpose = purpose;
+
+        var paymentData = new PaymentDto
+        {
+            Amount = amount,
+            Currency = "RUB",
+            Purpose = purpose
+        };
+
+        var serializer = new XmlSerializer(typeof(PaymentDto));
+        using var stringWriter = new StringWriter();
+        serializer.Serialize(stringWriter, paymentData);
+        string xmlData = stringWriter.ToString();
+
+        _transactionId = _oldSystem.MakePaymentXml(xmlData);
+    }
+    public string GetPaymentInfo()
+    {
+        if (_transactionId is null)
+            return $"Платёж на сумму {_amount} руб. ({_purpose}) НЕ выполнен (отклонён старой системой).";
+
+        return $"Платёж на сумму {_amount} руб. ({_purpose}) выполнен через старую систему (XML). ID: {_transactionId}";
     }
 }
 
@@ -280,14 +366,14 @@ class OldPaymentAdapter : IPaymentProcessor
 class NewPaymentAdapter : IPaymentProcessor
 {
     private readonly NewPaymentSystem _newSystem = new();
-    private decimal _lastAmount;
-    private string _lastPurpose = "";
-    private string? _lastTransactionId;
+    private decimal _amount;
+    private string _purpose = "";
+    private string? _transactionId;
 
     public void Pay(decimal amount, string purpose)
     {
-        _lastAmount = amount;
-        _lastPurpose = purpose;
+        _amount = amount;
+        _purpose = purpose;
 
         var paymentData = new
         {
@@ -297,11 +383,15 @@ class NewPaymentAdapter : IPaymentProcessor
         };
 
         string jsonData = JsonSerializer.Serialize(paymentData);
-        _lastTransactionId = _newSystem.ProcessPaymentJson(jsonData);
+        _transactionId = _newSystem.ProcessPaymentJson(jsonData);
     }
 
     public string GetPaymentInfo()
     {
-        return $"Платёж на сумму {_lastAmount} руб. ({_lastPurpose}) выполнен через новую систему (JSON). ID: {_lastTransactionId ?? "—"}";
+
+        if (_transactionId is null)
+            return $"Платёж на сумму {_amount} руб. ({_purpose}) НЕ выполнен (отклонён новой системой).";
+
+        return $"Платёж на сумму {_amount} руб. ({_purpose}) выполнен через новую систему (JSON). ID: {_transactionId}";
     }
 }
